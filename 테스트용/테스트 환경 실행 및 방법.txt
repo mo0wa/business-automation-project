@@ -1,0 +1,42 @@
+우선 nodejs 설치 프로그램을 실행하고 중간 Automatically install the necessary tools" 체크 완료하면.
+윈도우 powershell을 관리자 권한으로 시작. 
+node --version
+npm --version
+해당 명령어로 잘 설치되었는지 확인. 그 다음 
+＠＠＠ 만약 npm 에러 날 시
+Set-ExecutionPolicy RemoteSigned
+추가 입력
+
+PowerShell 창 #1 (백엔드 용)
+cd C:\work\business-automation-project\backend
+npm install
+npm start
+
+cd C:\work\business-automation-project\backend
+npm start
+
+PowerShell 창 #2 (프론트엔드 용)
+cd C:\work\business-automation-project\frontend
+npm install
+npm run dev
+
+cd C:\work\business-automation-project\frontend
+npm run dev
+
+백엔드: http://localhost:5000
+프론트엔드: http://localhost:3000
+
+테스트 계정: admin / admin123 (관리자), user / user123 (직원)
+
+# 모든 Node 프로세스 종료
+taskkill /F /IM node.exe
+
+http://mo0watest.iptime.org:3000/
+
+218.148.214.230
+
+
+데모 사이트 키는법
+= C:\work\business-automation-project 해당 폴더에서 진행
+.\start-demo-backend.ps1     # 백엔드 5001 + 데모 DB
+.\start-demo-frontend.ps1    # 프론트 3001 → 5001

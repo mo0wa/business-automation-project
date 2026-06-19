@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(powershell -Command \"Set-Content -Path ''c:\\\\work\\\\business-automation-project\\\\backend\\\\database.js'' -Encoding UTF8 -Value @''\nconst sqlite3 = require\\(''''sqlite3''''\\).verbose\\(\\);\nconst path = require\\(''''path''''\\);\n''@\")",
+      "Bash(curl:*)"
+    ]
+  }
+}
