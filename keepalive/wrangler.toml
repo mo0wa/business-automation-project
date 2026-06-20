@@ -1,0 +1,9 @@
+name = "businesspro-keepalive"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# 크론은 UTC 기준. KST = UTC+9.
+# KST 08:00 = UTC 23:00(전날), KST 21:00 = UTC 12:00
+# → UTC 시(hour) 23 과 0~12 동안 10분마다 실행 = KST 08:00~21:59
+[triggers]
+crons = ["*/10 23,0-12 * * *"]

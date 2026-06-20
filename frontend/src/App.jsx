@@ -7,8 +7,9 @@ import RevenueLedger from './components/RevenueLedger';
 import AdminSettings from './components/AdminSettings';
 import TrashList from './components/TrashList';
 import SchedulePage from './components/SchedulePage';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import { settingsAPI, authAPI } from './services/api';
-import { FileText, Receipt, BookOpen, Settings, LogOut, ChevronRight, User, Trash2, CalendarDays } from 'lucide-react';
+import { FileText, Receipt, BookOpen, Settings, LogOut, ChevronRight, User, Trash2, CalendarDays, KeyRound } from 'lucide-react';
 
 // 인증 Context
 export const AuthContext = createContext(null);
@@ -51,6 +52,7 @@ export default function App() {
   const [copyData, setCopyData] = useState(null);
   const [detailKey, setDetailKey] = useState(0);
   const [previousPage, setPreviousPage] = useState('quotes');
+  const [showPwModal, setShowPwModal] = useState(false);
 
   useEffect(() => {
     document.title = IS_DEMO ? '데모상사 - 견적 시스템 (DEMO)' : '디자인신세계 - 견적 시스템';
@@ -171,6 +173,10 @@ export default function App() {
                   </div>
                 )}
               </div>
+              <button className="logout-btn" onClick={() => setShowPwModal(true)} title="비밀번호 변경">
+                <KeyRound size={18} />
+                {!sidebarCollapsed && <span>비밀번호 변경</span>}
+              </button>
               <button className="logout-btn" onClick={handleLogout} title="로그아웃">
                 <LogOut size={18} />
                 {!sidebarCollapsed && <span>로그아웃</span>}
@@ -183,6 +189,7 @@ export default function App() {
             {renderPage()}
           </main>
         </div>
+        {showPwModal && <ChangePasswordModal onClose={() => setShowPwModal(false)} />}
       </SettingsContext.Provider>
     </AuthContext.Provider>
   );

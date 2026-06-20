@@ -85,6 +85,24 @@ app.post('/api/auth/logout', async (req, res) => {
   }
 });
 
+// 본인 비밀번호 변경 (로그인 사용자)
+app.post('/api/auth/change-password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || String(newPassword).length < 4) {
+      return res.status(400).json({ error: '새 비밀번호는 4자 이상이어야 합니다.' });
+    }
+    const user = await db.getAsync('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (!user || !verifyPassword(currentPassword, user.password)) {
+      return res.status(400).json({ error: '현재 비밀번호가 올바르지 않습니다.' });
+    }
+    await db.runAsync('UPDATE users SET password = ? WHERE id = ?', [hashPassword(newPassword), req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/auth/users', requireAdmin, async (req, res) => {
   try {
     const users = await db.allAsync('SELECT id, username, name, role, created_at FROM users');
