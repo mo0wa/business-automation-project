@@ -73,12 +73,6 @@ export default function LoginPage({ onLogin }) {
             {loading ? '로그인 중...' : '로그인'}
           </button>
         </form>
-
-        <div className="login-hint">
-          <p>테스트 계정</p>
-          <span>관리자: admin / admin123</span>
-          <span>직원: user / user123</span>
-        </div>
       </div>
     </div>
   );
