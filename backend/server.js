@@ -128,6 +128,44 @@ app.post('/api/auth/users', requireAdmin, async (req, res) => {
   }
 });
 
+// 데이터베이스(Neon) 사용량 통계 — 관리자 전용
+app.get('/api/admin/db-stats', requireAdmin, async (req, res) => {
+  try {
+    const sizeRow = await db.getAsync('SELECT pg_database_size(current_database()) AS bytes');
+    const tables = await db.allAsync(
+      `SELECT c.relname AS name,
+              pg_total_relation_size(c.oid) AS total_bytes,
+              pg_indexes_size(c.oid) AS index_bytes
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r'
+       ORDER BY pg_total_relation_size(c.oid) DESC`
+    );
+    // 각 테이블 정확한 행 수 (테이블명은 카탈로그에서 온 값이라 안전)
+    if (tables.length > 0) {
+      const unionSql = tables
+        .map((t) => `SELECT '${t.name}' AS name, COUNT(*)::int AS rows FROM "${t.name}"`)
+        .join(' UNION ALL ');
+      const counts = await db.allAsync(unionSql);
+      const rowMap = Object.fromEntries(counts.map((c) => [c.name, c.rows]));
+      tables.forEach((t) => { t.rows = rowMap[t.name] ?? 0; });
+    }
+    res.json({
+      db_bytes: Number(sizeRow.bytes),
+      limit_bytes: 512 * 1024 * 1024, // Neon 무료 플랜 약 0.5GB
+      tables: tables.map((t) => ({
+        name: t.name,
+        total_bytes: Number(t.total_bytes),
+        index_bytes: Number(t.index_bytes),
+        rows: t.rows || 0,
+      })),
+      generated_at: Date.now(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===================== 견적서 API =====================
 // 견적서 목록
 app.get('/api/quotes', async (req, res) => {

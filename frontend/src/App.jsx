@@ -8,8 +8,9 @@ import AdminSettings from './components/AdminSettings';
 import TrashList from './components/TrashList';
 import SchedulePage from './components/SchedulePage';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import DbStatus from './components/DbStatus';
 import { settingsAPI, authAPI } from './services/api';
-import { FileText, Receipt, BookOpen, Settings, LogOut, ChevronRight, User, Trash2, CalendarDays, KeyRound } from 'lucide-react';
+import { FileText, Receipt, BookOpen, Settings, LogOut, ChevronRight, User, Trash2, CalendarDays, KeyRound, Database } from 'lucide-react';
 
 // 인증 Context
 export const AuthContext = createContext(null);
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { key: 'expenses', label: '지출 등록', icon: Receipt, roles: ['admin'] },
   { key: 'revenue', label: '매출 장부', icon: BookOpen, roles: ['admin'] },
   { key: 'admin', label: '관리자 화면', icon: Settings, roles: ['admin'] },
+  { key: 'dbstatus', label: 'DB 사용량', icon: Database, roles: ['admin'] },
 ];
 
 // 데모 실행 여부 (vite define) — 데모면 로고를 데모용으로 표시
@@ -117,6 +119,8 @@ export default function App() {
         return user.role === 'admin' ? <SchedulePage onSelectQuote={(id) => navigateTo('quoteDetail', id)} onGoExpenses={() => navigateTo('expenses')} /> : null;
       case 'admin':
         return user.role === 'admin' ? <AdminSettings settings={companySettings} onUpdate={setCompanySettings} /> : null;
+      case 'dbstatus':
+        return user.role === 'admin' ? <DbStatus /> : null;
       case 'trash':
         return <TrashList />;
       default:

@@ -82,6 +82,11 @@ export const settingsAPI = {
   update: (data) => api.put('/settings', data),
 };
 
+// ===== 관리자: 시스템/DB =====
+export const adminAPI = {
+  getDbStats: () => api.get('/admin/db-stats'),
+};
+
 // ===== 월별 고정 지출 체크리스트 =====
 export const fixedExpenseAPI = {
   getItems: () => api.get('/fixed-expenses/items'),

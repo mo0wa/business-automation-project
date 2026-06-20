@@ -3794,6 +3794,118 @@ a { text-decoration: none; color: inherit; }
 .pw-modal-actions .btn-primary { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ========================================
+   DB 사용량 페이지
+   ======================================== */
+.dbstatus-page { padding: 28px 32px; max-width: 880px; }
+.dbstatus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.dbstatus-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.dbstatus-head h2 svg { color: var(--accent); }
+.dbstatus-refresh { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; }
+.dbstatus-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 0;
+  color: var(--text-secondary);
+}
+.dbstatus-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+.dbstatus-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.dbstatus-card-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.dbstatus-card-pct { font-size: 1.4rem; font-weight: 800; }
+.dbstatus-bar {
+  height: 12px;
+  border-radius: 99px;
+  background: var(--bg-hover, rgba(0,0,0,0.08));
+  overflow: hidden;
+}
+.dbstatus-bar-fill { height: 100%; border-radius: 99px; transition: width 0.4s ease; }
+.dbstatus-card-sub {
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dbstatus-card-sub strong { font-size: 1.05rem; }
+.dbstatus-card-hint { font-size: 0.78rem; color: var(--text-secondary); margin-left: auto; }
+.dbstatus-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.dbstatus-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dbstatus-stat-num { font-size: 1.5rem; font-weight: 800; color: var(--text-primary); }
+.dbstatus-stat-label { font-size: 0.8rem; color: var(--text-secondary); }
+.dbstatus-table-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.dbstatus-table-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 14px 18px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.dbstatus-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.dbstatus-table th, .dbstatus-table td { padding: 10px 18px; text-align: left; }
+.dbstatus-table th { color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; }
+.dbstatus-table td { color: var(--text-primary); border-top: 1px solid var(--border, #f1f1f1); }
+.dbstatus-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.dbstatus-table .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.84rem; }
+.dbstatus-table .dim { color: var(--text-secondary); }
+.dbstatus-table tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,0.03)); }
+.dbstatus-foot { margin-top: 14px; font-size: 0.78rem; color: var(--text-secondary); text-align: right; }
+
+/* ========================================
    토스트 알림
    ======================================== */
 .toast-container {
