@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const path = require('path');
+const fs = require('fs');
 const { db, initDatabase } = require('./database');
 const { hashPassword, verifyPassword, generateToken } = require('./auth-util');
 
@@ -14,25 +16,8 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// DB 초기화
-initDatabase();
-
-// 마이그레이션: cash_payment 컬럼 추가 (없을 경우에만)
-db.run('ALTER TABLE quotes ADD COLUMN cash_payment INTEGER DEFAULT 0', () => {
-  // 세액포함 품목의 마스터 합계 보정: quote_items의 supply_price/tax 합으로 재계산
-  // (기존에 세액이 이중 계상되어 저장된 견적서를 견적 상세와 동일하게 정정)
-  db.run(`
-    UPDATE quotes SET
-      supply_amount = COALESCE((SELECT SUM(supply_price) FROM quote_items WHERE quote_id = quotes.id), 0),
-      tax_amount = CASE WHEN cash_payment = 1 THEN 0
-                        ELSE COALESCE((SELECT SUM(tax) FROM quote_items WHERE quote_id = quotes.id), 0) END,
-      total_amount = COALESCE((SELECT SUM(supply_price) FROM quote_items WHERE quote_id = quotes.id), 0)
-        + (CASE WHEN cash_payment = 1 THEN 0
-                ELSE COALESCE((SELECT SUM(tax) FROM quote_items WHERE quote_id = quotes.id), 0) END)
-  `, (err) => {
-    if (err) console.error('합계 보정 마이그레이션 오류:', err.message);
-  });
-});
+// 헬스체크 (keepalive 핑용, 인증 불필요)
+app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ===================== 인증 게이트 =====================
 // /api/* 요청은 로그인(토큰) 필수. 단, 로그인 엔드포인트는 예외.
@@ -78,7 +63,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
     }
     // 만료 세션 정리 후 새 토큰 발급
-    await db.runAsync("DELETE FROM sessions WHERE expires_at < datetime('now')").catch(() => {});
+    await db.runAsync("DELETE FROM sessions WHERE expires_at < NOW()").catch(() => {});
     const token = generateToken();
     const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
     await db.runAsync('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)', [token, user.id, expires]);
@@ -131,11 +116,11 @@ app.get('/api/quotes', async (req, res) => {
   try {
     const { status, search } = req.query;
     let sql = `SELECT q.*, u.name as creator_name,
-      (SELECT COUNT(*) FROM quote_items WHERE quote_id = q.id) as item_count,
-      (SELECT GROUP_CONCAT(
-        product_name || '<|>' || COALESCE(specification,'') || '<|>' || CAST(COALESCE(quantity,0) AS TEXT),
-        '<||>'
-      ) FROM (SELECT product_name, specification, quantity FROM quote_items WHERE quote_id = q.id AND TRIM(product_name) != '' ORDER BY sort_order LIMIT 5)) as item_preview
+      (SELECT COUNT(*)::int FROM quote_items WHERE quote_id = q.id) as item_count,
+      (SELECT string_agg(
+        sub.product_name || '<|>' || COALESCE(sub.specification,'') || '<|>' || CAST(COALESCE(sub.quantity,0) AS TEXT),
+        '<||>' ORDER BY sub.sort_order
+      ) FROM (SELECT product_name, specification, quantity, sort_order FROM quote_items WHERE quote_id = q.id AND TRIM(product_name) <> '' ORDER BY sort_order LIMIT 5) sub) as item_preview
       FROM quotes q LEFT JOIN users u ON q.created_by = u.id`;
     const params = [];
     const conditions = ['q.deleted_at IS NULL'];
@@ -146,12 +131,12 @@ app.get('/api/quotes', async (req, res) => {
     }
     if (search) {
       conditions.push(`(
-        q.title LIKE ? OR
-        q.client_name LIKE ? OR
-        q.client_company LIKE ? OR
-        CAST(q.total_amount AS TEXT) LIKE ? OR
-        EXISTS (SELECT 1 FROM quote_items qi WHERE qi.quote_id = q.id AND qi.product_name LIKE ?) OR
-        EXISTS (SELECT 1 FROM quote_items qi WHERE qi.quote_id = q.id AND qi.notes LIKE ?)
+        q.title ILIKE ? OR
+        q.client_name ILIKE ? OR
+        q.client_company ILIKE ? OR
+        CAST(q.total_amount AS TEXT) ILIKE ? OR
+        EXISTS (SELECT 1 FROM quote_items qi WHERE qi.quote_id = q.id AND qi.product_name ILIKE ?) OR
+        EXISTS (SELECT 1 FROM quote_items qi WHERE qi.quote_id = q.id AND qi.notes ILIKE ?)
       )`);
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
@@ -434,12 +419,12 @@ app.get('/api/expenses', requireAdmin, async (req, res) => {
     const conditions = [];
 
     if (year) {
-      conditions.push("strftime('%Y', e.expense_date) = ?");
-      params.push(year);
+      conditions.push("to_char(e.expense_date, 'YYYY') = ?");
+      params.push(String(year));
     }
     if (month) {
-      conditions.push("strftime('%m', e.expense_date) = ?");
-      params.push(month.padStart(2, '0'));
+      conditions.push("to_char(e.expense_date, 'MM') = ?");
+      params.push(String(month).padStart(2, '0'));
     }
     if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY e.expense_date DESC';
@@ -505,10 +490,10 @@ app.delete('/api/expenses/:id', requireAdmin, async (req, res) => {
       const year = d.getFullYear();
       const month = d.getMonth() + 1;
       const remaining = await db.getAsync(
-        `SELECT COUNT(*) as cnt FROM expenses
+        `SELECT COUNT(*)::int as cnt FROM expenses
          WHERE fixed_item_id = ?
-           AND strftime('%Y', expense_date) = printf('%04d', ?)
-           AND strftime('%m', expense_date) = printf('%02d', ?)`,
+           AND EXTRACT(YEAR FROM expense_date)::int = ?
+           AND EXTRACT(MONTH FROM expense_date)::int = ?`,
         [expense.fixed_item_id, year, month]
       );
       if (!remaining || remaining.cnt === 0) {
@@ -534,29 +519,29 @@ app.get('/api/revenue/monthly', requireAdmin, async (req, res) => {
 
     // 월별 매출 (결제날짜 → 견적날짜 → 생성일 순으로 기준 적용)
     const revenue = await db.allAsync(`
-      SELECT strftime('%m', COALESCE(payment_date, quote_date, created_at)) as month,
+      SELECT to_char(COALESCE(payment_date, quote_date, created_at::date), 'MM') as month,
         SUM(total_amount) as total_revenue,
         SUM(supply_amount) as total_supply,
         SUM(tax_amount) as total_tax,
-        COUNT(*) as quote_count
+        COUNT(*)::int as quote_count
       FROM quotes
-      WHERE strftime('%Y', COALESCE(payment_date, quote_date, created_at)) = ?
+      WHERE to_char(COALESCE(payment_date, quote_date, created_at::date), 'YYYY') = ?
         AND status IN ('미수금', '수금 완료')
         AND deleted_at IS NULL
-      GROUP BY strftime('%m', COALESCE(payment_date, quote_date, created_at))
+      GROUP BY to_char(COALESCE(payment_date, quote_date, created_at::date), 'MM')
       ORDER BY month
-    `, [targetYear]);
+    `, [String(targetYear)]);
 
     // 월별 지출
     const expenseData = await db.allAsync(`
-      SELECT strftime('%m', expense_date) as month,
+      SELECT to_char(expense_date, 'MM') as month,
         SUM(amount) as total_expense,
-        COUNT(*) as expense_count
+        COUNT(*)::int as expense_count
       FROM expenses
-      WHERE strftime('%Y', expense_date) = ?
-      GROUP BY strftime('%m', expense_date)
+      WHERE to_char(expense_date, 'YYYY') = ?
+      GROUP BY to_char(expense_date, 'MM')
       ORDER BY month
-    `, [targetYear]);
+    `, [String(targetYear)]);
 
     // 12개월 데이터 조합
     const monthly = [];
@@ -585,23 +570,23 @@ app.get('/api/revenue/monthly', requireAdmin, async (req, res) => {
 app.get('/api/revenue/yearly', requireAdmin, async (req, res) => {
   try {
     const revenue = await db.allAsync(`
-      SELECT strftime('%Y', COALESCE(payment_date, quote_date, created_at)) as year,
+      SELECT to_char(COALESCE(payment_date, quote_date, created_at::date), 'YYYY') as year,
         SUM(total_amount) as total_revenue,
         SUM(supply_amount) as total_supply,
-        COUNT(*) as quote_count
+        COUNT(*)::int as quote_count
       FROM quotes
       WHERE status IN ('미수금', '수금 완료')
         AND deleted_at IS NULL
-      GROUP BY strftime('%Y', COALESCE(payment_date, quote_date, created_at))
+      GROUP BY to_char(COALESCE(payment_date, quote_date, created_at::date), 'YYYY')
       ORDER BY year DESC
     `);
 
     const expenses = await db.allAsync(`
-      SELECT strftime('%Y', expense_date) as year,
+      SELECT to_char(expense_date, 'YYYY') as year,
         SUM(amount) as total_expense,
-        COUNT(*) as expense_count
+        COUNT(*)::int as expense_count
       FROM expenses
-      GROUP BY strftime('%Y', expense_date)
+      GROUP BY to_char(expense_date, 'YYYY')
       ORDER BY year DESC
     `);
 
@@ -618,21 +603,21 @@ app.get('/api/revenue/summary', requireAdmin, async (req, res) => {
 
     const stats = await db.getAsync(`
       SELECT
-        COUNT(*) as total_quotes,
+        COUNT(*)::int as total_quotes,
         SUM(CASE WHEN status = '수금 완료' THEN total_amount ELSE 0 END) as collected_amount,
         SUM(CASE WHEN status = '미수금' THEN total_amount ELSE 0 END) as uncollected_amount,
         SUM(CASE WHEN status IN ('미수금','수금 완료') THEN total_amount ELSE 0 END) as total_revenue,
-        SUM(CASE WHEN status = '작업 중' THEN 1 ELSE 0 END) as working_count,
-        SUM(CASE WHEN status = '작업 대기' THEN 1 ELSE 0 END) as waiting_count
+        SUM(CASE WHEN status = '작업 중' THEN 1 ELSE 0 END)::int as working_count,
+        SUM(CASE WHEN status = '작업 대기' THEN 1 ELSE 0 END)::int as waiting_count
       FROM quotes
-      WHERE strftime('%Y', COALESCE(payment_date, quote_date, created_at)) = ?
+      WHERE to_char(COALESCE(payment_date, quote_date, created_at::date), 'YYYY') = ?
         AND deleted_at IS NULL
-    `, [year]);
+    `, [String(year)]);
 
     const totalExpense = await db.getAsync(`
       SELECT SUM(amount) as total_expense FROM expenses
-      WHERE strftime('%Y', expense_date) = ?
-    `, [year]);
+      WHERE to_char(expense_date, 'YYYY') = ?
+    `, [String(year)]);
 
     res.json({
       ...stats,
@@ -657,10 +642,10 @@ app.get('/api/revenue/monthly-quotes', requireAdmin, async (req, res) => {
         u.name as creator_name
       FROM quotes q
       LEFT JOIN users u ON q.created_by = u.id
-      WHERE strftime('%Y-%m', COALESCE(q.payment_date, q.quote_date, q.created_at)) = ?
+      WHERE to_char(COALESCE(q.payment_date, q.quote_date, q.created_at::date), 'YYYY-MM') = ?
         AND q.status = '수금 완료'
         AND q.deleted_at IS NULL
-      ORDER BY COALESCE(q.payment_date, q.quote_date, q.created_at) ASC, q.id ASC
+      ORDER BY COALESCE(q.payment_date, q.quote_date, q.created_at::date) ASC, q.id ASC
     `, [ym]);
 
     // 각 견적서의 품목 상세 (가격 포함)
@@ -668,7 +653,7 @@ app.get('/api/revenue/monthly-quotes', requireAdmin, async (req, res) => {
       q.items = await db.allAsync(`
         SELECT product_name, specification, quantity, unit_price, supply_price, tax, raw_material_cost, notes
         FROM quote_items
-        WHERE quote_id = ? AND TRIM(product_name) != ''
+        WHERE quote_id = ? AND TRIM(product_name) <> ''
         ORDER BY sort_order
       `, [q.id]);
     }
@@ -678,7 +663,7 @@ app.get('/api/revenue/monthly-quotes', requireAdmin, async (req, res) => {
       SELECT e.id, e.expense_date, e.reason, e.amount, e.notes, u.name as creator_name
       FROM expenses e
       LEFT JOIN users u ON e.created_by = u.id
-      WHERE strftime('%Y-%m', e.expense_date) = ?
+      WHERE to_char(e.expense_date, 'YYYY-MM') = ?
       ORDER BY e.expense_date ASC, e.id ASC
     `, [ym]);
 
@@ -694,7 +679,7 @@ app.get('/api/revenue/notes', requireAdmin, async (req, res) => {
     const { year } = req.query;
     const rows = await db.allAsync(
       'SELECT year, month, note FROM revenue_monthly_notes WHERE year = ?',
-      [year]
+      [Number(year)]
     );
     res.json(rows);
   } catch (err) {
@@ -735,8 +720,8 @@ app.get('/api/calendar', requireAdmin, async (req, res) => {
               quote_date, payment_date, issue_date, transaction_date
        FROM quotes
        WHERE deleted_at IS NULL AND (
-         strftime('%Y-%m', quote_date) = ? OR strftime('%Y-%m', payment_date) = ?
-         OR strftime('%Y-%m', issue_date) = ? OR strftime('%Y-%m', transaction_date) = ?
+         to_char(quote_date, 'YYYY-MM') = ? OR to_char(payment_date, 'YYYY-MM') = ?
+         OR to_char(issue_date, 'YYYY-MM') = ? OR to_char(transaction_date, 'YYYY-MM') = ?
        )`,
       [ym, ym, ym, ym]
     );
@@ -751,7 +736,7 @@ app.get('/api/calendar', requireAdmin, async (req, res) => {
 
     // 실제 지출
     const expenses = await db.allAsync(
-      `SELECT id, expense_date, reason, description, amount FROM expenses WHERE strftime('%Y-%m', expense_date) = ?`,
+      `SELECT id, expense_date, reason, description, amount FROM expenses WHERE to_char(expense_date, 'YYYY-MM') = ?`,
       [ym]
     );
     expenses.forEach(e => events.push({
@@ -766,7 +751,7 @@ app.get('/api/calendar', requireAdmin, async (req, res) => {
     );
     const checks = await db.allAsync(
       `SELECT item_id, is_checked FROM fixed_expense_checks WHERE year = ? AND month = ?`,
-      [year, month]
+      [Number(year), Number(month)]
     );
     const checkMap = {};
     checks.forEach(c => { checkMap[c.item_id] = c.is_checked; });
@@ -910,15 +895,15 @@ app.get('/api/fixed-expenses/checks', requireAdmin, async (req, res) => {
   try {
     const { year, month } = req.query;
     const checks = await db.allAsync(
-      `SELECT fec.*, COUNT(e.id) as linked_expense_count
+      `SELECT fec.*, COUNT(e.id)::int as linked_expense_count
        FROM fixed_expense_checks fec
        LEFT JOIN expenses e
          ON e.fixed_item_id = fec.item_id
-         AND strftime('%Y', e.expense_date) = printf('%04d', fec.year)
-         AND strftime('%m', e.expense_date) = printf('%02d', fec.month)
+         AND EXTRACT(YEAR FROM e.expense_date)::int = fec.year
+         AND EXTRACT(MONTH FROM e.expense_date)::int = fec.month
        WHERE fec.year = ? AND fec.month = ?
        GROUP BY fec.id`,
-      [year, month]
+      [Number(year), Number(month)]
     );
     res.json(checks);
   } catch (err) {
@@ -941,13 +926,27 @@ app.post('/api/fixed-expenses/checks', requireAdmin, async (req, res) => {
     );
     const check = await db.getAsync(
       'SELECT * FROM fixed_expense_checks WHERE item_id = ? AND year = ? AND month = ?',
-      [item_id, year, month]
+      [item_id, Number(year), Number(month)]
     );
     res.json(check);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ===================== 프론트엔드(SPA) 서빙 =====================
+// 배포 시 Express가 빌드된 React(frontend/dist)도 함께 서빙 → 단일 서비스로 운영.
+// (로컬 개발은 vite 3000이 별도 서빙하므로 dist 없으면 건너뜀)
+const distPath = path.join(__dirname, '..', 'frontend', 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  // API/health 외의 GET은 SPA 진입점으로 (새로고침/딥링크 대응)
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 // ===================== 공통 에러 핸들러 =====================
 // 예기치 못한 에러 — JSON으로 응답
@@ -957,11 +956,20 @@ app.use((err, req, res, next) => {
 });
 
 // ===================== 서버 시작 =====================
-app.listen(PORT, () => {
-  console.log(`
+// DB 초기화(테이블 생성/시드) 완료 후 서버 오픈
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`
 ╔═══════════════════════════════════════════╗
 ║   🚀 BusinessPro API Server v2.0         ║
 ║   Port: ${PORT}                              ║
+║   DB: PostgreSQL                          ║
 ║   Mode: ${process.env.NODE_ENV || 'development'}                    ║
 ╚═══════════════════════════════════════════╝`);
-});
+    });
+  })
+  .catch((err) => {
+    console.error('❌ DB 초기화 실패, 서버를 시작할 수 없습니다:', err.message);
+    process.exit(1);
+  });
