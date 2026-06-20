@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
@@ -11,10 +12,26 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const SESSION_DAYS = 7; // 로그인 유지 기간
 
+// Render 등 리버스 프록시 뒤에서 실제 클라이언트 IP 인식 (레이트리밋용)
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
 // 미들웨어
-app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+// 보안 헤더 (CSP는 SPA 호환 위해 비활성화, 나머지 X-Frame-Options/HSTS 등 적용)
+app.use(helmet({ contentSecurityPolicy: false }));
+// 프론트를 같은 서버가 서빙하므로 CORS 불필요 — 제거(타 사이트의 API 호출 차단)
+app.use(bodyParser.json({ limit: '5mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
+
+// 로그인 무차별 대입(brute-force) 방어: IP당 15분에 10회 실패 시 차단
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // 성공 로그인은 카운트 제외
+  message: { error: '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.' },
+});
 
 // 헬스체크 (keepalive 핑용, 인증 불필요)
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
@@ -55,7 +72,7 @@ function requireAdmin(req, res, next) {
 }
 
 // ===================== 인증 API =====================
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await db.getAsync('SELECT * FROM users WHERE username = ?', [username]);
