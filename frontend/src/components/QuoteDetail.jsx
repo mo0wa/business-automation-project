@@ -1,13 +1,12 @@
 import { useState, useEffect, useContext, useRef } from 'react';
-import { quoteAPI, attachmentAPI } from '../services/api';
+import { quoteAPI } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmDialog } from '../services/confirm';
 import { SettingsContext } from '../App';
 import { generateQuoteHTML, printDocument, formatCurrency } from '../utils/documentUtils';
 import {
   ArrowLeft, Save, Printer, FileText, Image, Trash2, Plus, X,
-  ChevronDown, GripVertical, Loader2, Check, AlertCircle,
-  Paperclip, Download, Copy
+  ChevronDown, GripVertical, Loader2, Check, AlertCircle, Copy
 } from 'lucide-react';
 
 const STATUSES = ['임시저장', '작업 대기', '작업 중', '작업 요청 X', '미수금', '수금 완료'];
@@ -56,12 +55,8 @@ export default function QuoteDetail({ quoteId, onBack, backLabel, userId, initia
   // 거래일자 직접 지정 여부 (체크 시 거래명세서 날짜로 사용, 미체크 시 오늘 날짜)
   const [useTransDate, setUseTransDate] = useState(!!initialData?.quote?.transaction_date);
   const transactionDate = (useTransDate && quote?.transaction_date) ? quote.transaction_date : today;
-  const [attachments, setAttachments] = useState([]);
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
   const [dragItemIndex, setDragItemIndex] = useState(null);
   const [dragOverItemIndex, setDragOverItemIndex] = useState(null);
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (initialData) onInitialDataConsumed?.();
@@ -88,7 +83,6 @@ export default function QuoteDetail({ quoteId, onBack, backLabel, userId, initia
   useEffect(() => {
     if (!savedQuoteId) return;
     loadQuote();
-    loadAttachments();
   }, [savedQuoteId]);
 
   // 신규/복사 견적(저장 전): 확정 전 날짜는 오늘 날짜로 표시
@@ -118,58 +112,6 @@ export default function QuoteDetail({ quoteId, onBack, backLabel, userId, initia
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadAttachments = async () => {
-    try {
-      const res = await attachmentAPI.getAll(savedQuoteId);
-      setAttachments(res.data);
-    } catch (err) {
-      console.error('첨부파일 로드 실패:', err);
-    }
-  };
-
-  const handleFileUpload = async (file) => {
-    if (!file) return;
-    if (!savedQuoteId) { toast.info('먼저 저장 후 파일을 첨부할 수 있습니다.'); return; }
-    setUploadingFile(true);
-    try {
-      await attachmentAPI.upload(savedQuoteId, file);
-      await loadAttachments();
-    } catch (err) {
-      toast.error('파일 업로드 실패: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setUploadingFile(false);
-    }
-  };
-
-  const handleFileInputChange = (e) => {
-    const file = e.target.files[0];
-    if (file) handleFileUpload(file);
-    e.target.value = '';
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFileUpload(file);
-  };
-
-  const handleDeleteAttachment = async (attachId) => {
-    if (!(await confirmDialog({ title: '첨부파일 삭제', message: '첨부파일을 삭제하시겠습니까?', confirmText: '삭제', danger: true }))) return;
-    try {
-      await attachmentAPI.delete(attachId);
-      setAttachments(prev => prev.filter(a => a.id !== attachId));
-    } catch (err) {
-      toast.error('삭제 실패: ' + (err.response?.data?.error || err.message));
-    }
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const handleQuoteChange = (field, value) => {
@@ -713,55 +655,6 @@ export default function QuoteDetail({ quoteId, onBack, backLabel, userId, initia
             />
           </div>
 
-          {/* 첨부파일 */}
-          <div className="info-section">
-            <h3 className="section-title">첨부파일</h3>
-            <div
-              className={`attachment-dropzone${dragOver ? ' drag-over' : ''}`}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                style={{ display: 'none' }}
-                onChange={handleFileInputChange}
-              />
-              {uploadingFile ? (
-                <><Loader2 size={18} className="spin" /><span>업로드 중...</span></>
-              ) : (
-                <><Paperclip size={18} /><span>파일을 드래그하거나 클릭하여 업로드</span></>
-              )}
-            </div>
-            {attachments.length > 0 && (
-              <ul className="attachment-list">
-                {attachments.map(att => (
-                  <li key={att.id} className="attachment-item">
-                    <span className="attachment-name" title={att.original_name}>{att.original_name}</span>
-                    <span className="attachment-size">{formatFileSize(att.file_size)}</span>
-                    <a
-                      className="attachment-btn"
-                      href={`/uploads/${att.filename}`}
-                      download={att.original_name}
-                      onClick={(e) => e.stopPropagation()}
-                      title="다운로드"
-                    >
-                      <Download size={14} />
-                    </a>
-                    <button
-                      className="attachment-btn attachment-btn-delete"
-                      onClick={() => handleDeleteAttachment(att.id)}
-                      title="삭제"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </div>
 
         {/* 우측: 요약 패널 */}

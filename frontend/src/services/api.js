@@ -92,26 +92,4 @@ export const fixedExpenseAPI = {
   upsertCheck: (data) => api.post('/fixed-expenses/checks', data),
 };
 
-// ===== 파일 업로드 =====
-export const uploadFile = async (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  return api.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-};
-
-// ===== 견적서 첨부파일 =====
-export const attachmentAPI = {
-  getAll: (quoteId) => api.get(`/quotes/${quoteId}/attachments`),
-  upload: (quoteId, file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post(`/quotes/${quoteId}/attachments`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-  delete: (attachId) => api.delete(`/attachments/${attachId}`),
-};
-
 export default api;

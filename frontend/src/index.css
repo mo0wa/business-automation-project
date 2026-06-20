@@ -1622,72 +1622,6 @@ a { text-decoration: none; color: inherit; }
 }
 .memo-textarea:focus { outline: none; border-color: var(--accent); background: var(--bg-input-focus); }
 
-/* 첨부파일 */
-.attachment-dropzone {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-input);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: var(--transition);
-  user-select: none;
-}
-.attachment-dropzone:hover,
-.attachment-dropzone.drag-over {
-  border-color: var(--accent);
-  background: var(--accent-light);
-  color: var(--accent);
-}
-.attachment-list {
-  list-style: none;
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.attachment-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-}
-.attachment-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-.attachment-size {
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  white-space: nowrap;
-}
-.attachment-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: var(--transition);
-  text-decoration: none;
-}
-.attachment-btn:hover { background: var(--bg-card); color: var(--accent); }
-.attachment-btn-delete:hover { color: #ef4444; }
-
 /* Detail Sidebar */
 .detail-sidebar { position: sticky; top: 28px; }
 
@@ -2804,9 +2738,6 @@ a { text-decoration: none; color: inherit; }
   .detail-actions { flex-wrap: wrap; gap: 8px; }
   .item-fields { grid-template-columns: 1fr 1fr; }
   .form-grid-3col { grid-template-columns: 1fr 1fr; }
-
-  /* 첨부파일 */
-  .attachment-section { margin-top: 16px; }
 
   /* 지출 */
   .expense-layout { grid-template-columns: 1fr; }

@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const path = require('path');
-const fs = require('fs');
 const { db, initDatabase } = require('./database');
 const { hashPassword, verifyPassword, generateToken } = require('./auth-util');
 
@@ -15,11 +13,6 @@ const SESSION_DAYS = 7; // 로그인 유지 기간
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// uploads 폴더 생성
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // DB 초기화
 initDatabase();
@@ -42,7 +35,7 @@ db.run('ALTER TABLE quotes ADD COLUMN cash_payment INTEGER DEFAULT 0', () => {
 });
 
 // ===================== 인증 게이트 =====================
-// /api/* 요청은 로그인(토큰) 필수. 단, 로그인 엔드포인트와 정적 /uploads는 예외.
+// /api/* 요청은 로그인(토큰) 필수. 단, 로그인 엔드포인트는 예외.
 app.use(async (req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (req.method === 'OPTIONS') return next();
@@ -835,75 +828,6 @@ app.put('/api/settings', requireAdmin, async (req, res) => {
   }
 });
 
-// ===================== 파일 업로드 API =====================
-const multerLib = require('multer');
-const multerStorage = multerLib.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${ext}`);
-  }
-});
-// 허용 확장자 화이트리스트 (이미지/문서/압축). html, svg, exe, js 등 실행/스크립트 파일 차단
-const ALLOWED_UPLOAD_EXT = /\.(jpe?g|png|gif|webp|bmp|heic|pdf|hwp|hwpx|docx?|xlsx?|pptx?|txt|csv|zip)$/i;
-const upload = multerLib({
-  storage: multerStorage,
-  limits: { fileSize: 30 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_UPLOAD_EXT.test(file.originalname)) cb(null, true);
-    else cb(new Error('허용되지 않는 파일 형식입니다. (이미지·문서·압축 파일만 가능)'));
-  },
-});
-
-// 기존 단일 업로드 (범용)
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
-  res.json({ success: true, path: `/uploads/${req.file.filename}`, filename: req.file.originalname });
-});
-
-// 견적서 첨부파일 목록 조회
-app.get('/api/quotes/:id/attachments', async (req, res) => {
-  try {
-    const rows = await db.allAsync(
-      'SELECT * FROM quote_attachments WHERE quote_id = ? ORDER BY created_at ASC',
-      [req.params.id]
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 견적서 첨부파일 업로드
-app.post('/api/quotes/:id/attachments', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
-  try {
-    const result = await db.runAsync(
-      `INSERT INTO quote_attachments (quote_id, filename, original_name, file_size, mime_type)
-       VALUES (?, ?, ?, ?, ?)`,
-      [req.params.id, req.file.filename, req.file.originalname, req.file.size, req.file.mimetype]
-    );
-    const row = await db.getAsync('SELECT * FROM quote_attachments WHERE id = ?', [result.lastID]);
-    res.json(row);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 견적서 첨부파일 삭제
-app.delete('/api/attachments/:id', async (req, res) => {
-  try {
-    const row = await db.getAsync('SELECT * FROM quote_attachments WHERE id = ?', [req.params.id]);
-    if (!row) return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
-    const filePath = path.join(uploadsDir, row.filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    await db.runAsync('DELETE FROM quote_attachments WHERE id = ?', [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ===================== 월별 고정 지출 체크리스트 =====================
 
 // 항목 목록 조회
@@ -1026,7 +950,7 @@ app.post('/api/fixed-expenses/checks', requireAdmin, async (req, res) => {
 });
 
 // ===================== 공통 에러 핸들러 =====================
-// (multer 업로드 거부 등) — JSON으로 응답
+// 예기치 못한 에러 — JSON으로 응답
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   res.status(400).json({ error: err.message || '요청 처리 중 오류가 발생했습니다.' });

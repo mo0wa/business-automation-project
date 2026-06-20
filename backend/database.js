@@ -124,18 +124,6 @@ function initDatabase() {
       FOREIGN KEY (created_by) REFERENCES users(id)
     )`);
 
-    // 견적서 첨부파일 테이블
-    db.run(`CREATE TABLE IF NOT EXISTS quote_attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      quote_id INTEGER NOT NULL,
-      filename TEXT NOT NULL,
-      original_name TEXT NOT NULL,
-      file_size INTEGER DEFAULT 0,
-      mime_type TEXT DEFAULT '',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE
-    )`);
-
     // quote_date 컬럼 마이그레이션 (기존 DB 호환)
     db.run(`ALTER TABLE quotes ADD COLUMN quote_date DATE DEFAULT NULL`, [], (err) => {
       if (err && !err.message.includes('duplicate column name')) {
