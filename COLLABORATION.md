@@ -214,6 +214,15 @@ npm run dev
 - **배포법:** [keepalive/README.md](keepalive/README.md) 참고 — `wrangler login` 후 `keepalive` 폴더에서 `wrangler deploy`.
 - 시간대·주기를 바꾸려면 `wrangler.toml`의 `crons` 수정 후 재배포.
 
+> **2026-11-09 추가 — GitHub Actions keepalive 가동 중 (로그인 불필요)**
+> 무료 인스턴스가 **잠든 뒤 못 깨어나는 현상**(재배포하면 복구)이 확인되어 [.github/workflows/keepalive.yml](.github/workflows/keepalive.yml)을 추가했습니다.
+> - 업무시간(KST 07:52~21:57) 5분마다 `/health` 핑 → 잠들지 않게 유지
+> - 무응답이면 `keepalive/last-redeploy.txt`를 갱신해 `main`에 push → Render 재배포로 **자동 복구**
+>   (`/health`의 `commit` 값이 새 커밋으로 바뀌는 것으로 배포 반영 확인)
+> - 그래서 `github-actions[bot]` 커밋이 보통 하루 1회(아침) 생깁니다. 작업 전 `git pull`만 하면 됩니다.
+> - 실행 기록: GitHub 저장소 → **Actions** 탭 → keepalive. 끄려면 그 화면에서 *Disable workflow*.
+> - 업무시간 밖(22시~익일 07:50)에는 잠들어서 접속이 안 될 수 있습니다. 근본 해결은 Render 유료 인스턴스(잠들지 않음).
+
 ---
 
 ## 9. 계정 · 접속정보 체크리스트

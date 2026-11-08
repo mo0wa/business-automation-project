@@ -34,7 +34,9 @@ const loginLimiter = rateLimit({
 });
 
 // 헬스체크 (keepalive 핑용, 인증 불필요)
-app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
+// commit: Render가 주입하는 배포 커밋 — keepalive 워크플로가 재배포 반영 여부 확인에 사용
+const DEPLOY_COMMIT = (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined;
+app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now(), commit: DEPLOY_COMMIT }));
 
 // ===================== 인증 게이트 =====================
 // /api/* 요청은 로그인(토큰) 필수. 단, 로그인 엔드포인트는 예외.
@@ -1030,6 +1032,8 @@ app.use((err, req, res, next) => {
 
 // ===================== 서버 시작 =====================
 // DB 초기화(테이블 생성/시드) 완료 후 서버 오픈
+// 시작 로그를 먼저 남겨, 기동 실패 시 프로세스가 떴는지 / DB 초기화에서 멈췄는지 Render 로그로 구분
+console.log(`▶ 서버 프로세스 시작 (commit ${DEPLOY_COMMIT || 'local'}) — DB 초기화 중...`);
 initDatabase()
   .then(() => {
     app.listen(PORT, () => {

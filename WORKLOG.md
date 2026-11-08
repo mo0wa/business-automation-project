@@ -25,6 +25,7 @@
 
 | 날짜 | PC | 한 일 | 관련 파일/영역 | 배포 |
 |------|----|-------|----------------|:---:|
+| 2026-11-09 | DESKTOP-NJEA5UF (Claude) | GitHub Actions keepalive + 무응답 시 자동 재배포 추가(사용자 승인). `/health`에 배포 커밋 표시, 서버 시작 로그 추가 | .github/workflows/keepalive.yml, backend/server.js, COLLABORATION.md §8 | ✅ |
 | 2026-11-08 | DESKTOP-NJEA5UF (Claude 무인) | 재배포 후 21분 무접속 뒤 다시 무응답 → **잠들면 못 깨어나는 현상** 확인. 재배포로 임시 복구. 근본 대책(GitHub Actions keepalive + 무응답 시 자동 재배포)은 승인 대기 | Render | ✅ |
 | 2026-11-08 | DESKTOP-NJEA5UF (Claude 무인) | 운영 사이트 무응답 점검 → 재배포 트리거(코드 변경 없음). Neon DB 정상, Render는 Live 표시지만 깨어나지 않음(앱 로그 1일간 없음) | Render | ✅ |
 | 2026-07-03 | 회사 | 협업 가이드·작업일지 문서 추가 | COLLABORATION.md, WORKLOG.md | — |

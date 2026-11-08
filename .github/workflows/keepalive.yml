@@ -1,0 +1,102 @@
+# Render 무료 인스턴스 keepalive + 자동 복구
+#
+# 배경 (2026-11-08): Render 무료 인스턴스가 15분 무접속으로 잠든 뒤 다시 깨어나지 못하는 현상.
+#   재배포하면 바로 살아나지만, 다시 잠들면 같은 증상이 재발함 (21분 무접속 테스트로 확인).
+#
+# 동작:
+#   1) 업무시간(KST 07:52~21:57) 5분마다 /health 핑 → 잠들지 않게 유지
+#   2) 핑이 실패하면(잠든 뒤 못 깨어난 상태) keepalive/last-redeploy.txt 를 갱신해 main 에 push
+#      → Render 자동 재배포 → /health 의 commit 이 새 커밋으로 바뀌면 복구 완료.
+#      밤새 잠든 뒤 아침 첫 실행에서 보통 하루 1회 발생.
+#   3) 이 파일을 수정해 push 하면 복구 경로(커밋 push → Render 재배포)를 실제로 1회 실행해 자가 점검.
+#
+# 끄기: 이 파일 삭제, 또는 GitHub → Actions → keepalive → Disable workflow
+# 시간대 변경: 아래 cron 은 UTC 기준 (KST = UTC+9)
+name: keepalive
+
+on:
+  schedule:
+    - cron: '52,57 22 * * *'        # KST 07:52, 07:57 (출근 전에 미리 깨우기)
+    - cron: '2-59/5 23,0-12 * * *'  # KST 08:02 ~ 21:57, 5분 간격 (정각은 GitHub 혼잡 시간이라 2분 비켜감)
+  push:
+    branches: [main]
+    paths: ['.github/workflows/keepalive.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 복구 시 main 에 재배포용 커밋 push
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+env:
+  SITE: https://business-automation-project.onrender.com
+  STAMP: keepalive/last-redeploy.txt
+  COOLDOWN_SEC: 1800   # 재배포 후 30분 안에는 중복 재배포 안 함
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 헬스체크
+        id: health
+        run: |
+          for i in 1 2; do
+            code=$(curl -s -o /dev/null -m 90 -w '%{http_code}' "$SITE/health" || true)
+            echo "시도 $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "up=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "up=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::/health 무응답 — 자동 재배포 진행"
+
+      - name: 체크아웃
+        if: steps.health.outputs.up == 'false' || github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 재배포 트리거 (main 에 커밋 push → Render 자동 배포)
+        id: redeploy
+        if: steps.health.outputs.up == 'false' || github.event_name == 'push'
+        env:
+          REASON: ${{ github.event_name == 'push' && '워크플로 변경 — 복구 경로 자가 점검' || '/health 무응답' }}
+        run: |
+          now=$(date -u +%s)
+          if [ "$GITHUB_EVENT_NAME" != "push" ] && [ -f "$STAMP" ]; then
+            last=$(head -1 "$STAMP" | cut -d' ' -f1)
+            if [ -n "$last" ] && [ $((now - last)) -lt "$COOLDOWN_SEC" ]; then
+              echo "최근 재배포 후 ${COOLDOWN_SEC}초 이내 — 중복 방지로 건너뜀"
+              echo "pushed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "$now $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S') KST — $REASON → 자동 재배포" > "$STAMP"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$STAMP"
+          git commit -m "keepalive: $REASON → Render 자동 재배포"
+          git push origin HEAD:main || { git pull --rebase origin main && git push origin HEAD:main; }
+          echo "sha=$(git rev-parse HEAD | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 복구 확인 (새 커밋이 배포될 때까지 최대 10분)
+        if: steps.redeploy.outputs.pushed == 'true'
+        env:
+          SHA: ${{ steps.redeploy.outputs.sha }}
+        run: |
+          for i in $(seq 1 20); do
+            sleep 30
+            body=$(curl -s -m 25 "$SITE/health" || true)
+            echo "$(TZ=Asia/Seoul date +%H:%M:%S) $body"
+            if echo "$body" | grep -q "\"commit\":\"$SHA\""; then
+              echo "✅ $SHA 배포 확인 — 복구 완료" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "::error::재배포한 커밋($SHA)이 10분 안에 반영되지 않음 — Render 대시보드(Events/Logs) 확인 필요"
+          exit 1
